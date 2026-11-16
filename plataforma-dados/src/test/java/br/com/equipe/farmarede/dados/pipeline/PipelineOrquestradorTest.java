@@ -2,6 +2,7 @@ package br.com.equipe.farmarede.dados.pipeline;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import io.quarkus.panache.common.Sort;
@@ -81,6 +82,27 @@ class PipelineOrquestradorTest {
     orquestrador(true, etapa).executarAgendado();
 
     assertEquals(1, etapa.chamadas.get());
+  }
+
+  @Test
+  void naoPermiteDoisLotesAoMesmoTempo() {
+    final PipelineOrquestrador[] mesmo = new PipelineOrquestrador[1];
+    final EtapaFalsa reentrante =
+        new EtapaFalsa(
+            "teste-10",
+            10,
+            () -> {
+              // Um segundo disparo enquanto o primeiro lote ainda está rodando.
+              assertThrows(
+                  PipelineOrquestrador.PipelineEmExecucaoException.class, mesmo[0]::executar);
+              return new ResultadoEtapa(0, "ok");
+            });
+    mesmo[0] = orquestrador(true, reentrante);
+
+    mesmo[0].executar();
+    mesmo[0].executar();
+
+    assertEquals(2, reentrante.chamadas.get(), "a trava é liberada ao fim de cada lote");
   }
 
   private PipelineOrquestrador orquestrador(

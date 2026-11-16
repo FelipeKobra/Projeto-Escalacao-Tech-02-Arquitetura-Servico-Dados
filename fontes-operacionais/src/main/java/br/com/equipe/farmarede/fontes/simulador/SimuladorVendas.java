@@ -17,6 +17,7 @@ import io.quarkus.logging.Log;
 import io.quarkus.panache.common.Sort;
 import io.quarkus.scheduler.Scheduled;
 import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.persistence.LockModeType;
 import jakarta.transaction.Transactional;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -134,9 +135,11 @@ public class SimuladorVendas {
    */
   @Transactional
   int reporEstoque(final RandomGenerator sorteio) {
-    List<EstoqueAtual> candidatos = estoque.list("quantidade < estoqueMinimo");
+    List<EstoqueAtual> candidatos =
+        estoque.find("quantidade < estoqueMinimo").withLock(LockModeType.PESSIMISTIC_WRITE).list();
     if (candidatos.isEmpty()) {
-      candidatos = new ArrayList<>(estoque.listAll());
+      candidatos =
+          new ArrayList<>(estoque.findAll().withLock(LockModeType.PESSIMISTIC_WRITE).list());
       Collections.shuffle(candidatos, sorteio);
     }
     final List<EstoqueAtual> repostos =
@@ -249,8 +252,10 @@ public class SimuladorVendas {
     movimentos.persist(movimento);
   }
 
+  /** Lê o saldo com lock de linha: duas instâncias do simulador não perdem baixa uma da outra. */
   private EstoqueAtual saldoDe(final Loja loja, final Produto produto) {
-    return estoque.findById(new EstoqueAtual.Id(loja.getId(), produto.getId()));
+    return estoque.findById(
+        new EstoqueAtual.Id(loja.getId(), produto.getId()), LockModeType.PESSIMISTIC_WRITE);
   }
 
   private Cliente sortearCliente(final RandomGenerator sorteio) {

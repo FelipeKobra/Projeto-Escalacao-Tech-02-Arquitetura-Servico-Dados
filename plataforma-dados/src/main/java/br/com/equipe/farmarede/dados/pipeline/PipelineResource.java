@@ -29,14 +29,21 @@ public class PipelineResource {
   /** Resposta do disparo manual. */
   public record LoteDisparado(UUID loteId) {}
 
+  /** Corpo de erro (409 quando já há um lote em andamento). */
+  public record Erro(String mensagem) {}
+
   /**
-   * Dispara o pipeline agora. Resposta 202 com {@code {"loteId": "..."}}; o resultado de cada etapa
-   * (inclusive falha) fica no histórico.
+   * Dispara o pipeline agora. Resposta 202 com {@code {"loteId": "..."}}, ou 409 se já houver um
+   * lote em andamento; o resultado de cada etapa (inclusive falha) fica no histórico.
    */
   @POST
   public Response disparar() {
-    final UUID lote = orquestrador.executar();
-    return Response.accepted(new LoteDisparado(lote)).build();
+    try {
+      final UUID lote = orquestrador.executar();
+      return Response.accepted(new LoteDisparado(lote)).build();
+    } catch (PipelineOrquestrador.PipelineEmExecucaoException e) {
+      return Response.status(Response.Status.CONFLICT).entity(new Erro(e.getMessage())).build();
+    }
   }
 
   /** Histórico de execuções, mais recente primeiro (limite 50). */

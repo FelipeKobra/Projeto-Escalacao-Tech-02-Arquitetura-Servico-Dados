@@ -9,6 +9,7 @@ import java.time.OffsetDateTime;
 import java.util.Comparator;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicBoolean;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 
 /**
@@ -26,6 +27,7 @@ public class PipelineOrquestrador {
   private final List<EtapaPipeline> etapas;
   private final ExecucaoPipelineRepository execucoes;
   private final boolean habilitado;
+  private final AtomicBoolean emExecucao = new AtomicBoolean();
 
   public PipelineOrquestrador(
       @All final List<EtapaPipeline> etapas,
@@ -55,36 +57,49 @@ public class PipelineOrquestrador {
    * @return o lote executado
    */
   public UUID executar() {
-    final ContextoExecucao contexto = ContextoExecucao.novo();
-    Log.infof("Pipeline lote %s iniciado (%d etapas)", contexto.loteId(), etapas.size());
-    for (final EtapaPipeline etapa : etapas) {
-      if (!executarEtapa(etapa, contexto)) {
-        Log.warnf("Pipeline lote %s interrompido na etapa %s", contexto.loteId(), etapa.nome());
-        break;
-      }
+    // Cron (SKIP) e POST manual compartilham esta trava: nunca dois lotes ao mesmo tempo.
+    if (!emExecucao.compareAndSet(false, true)) {
+      throw new PipelineEmExecucaoException();
     }
-    return contexto.loteId();
+    try {
+      final ContextoExecucao contexto = ContextoExecucao.novo();
+      Log.infof("Pipeline lote %s iniciado (%d etapas)", contexto.loteId(), etapas.size());
+      for (final EtapaPipeline etapa : etapas) {
+        if (!executarEtapa(etapa, contexto)) {
+          Log.warnf("Pipeline lote %s interrompido na etapa %s", contexto.loteId(), etapa.nome());
+          break;
+        }
+      }
+      return contexto.loteId();
+    } finally {
+      emExecucao.set(false);
+    }
   }
 
   private boolean executarEtapa(final EtapaPipeline etapa, final ContextoExecucao contexto) {
     final long id = QuarkusTransaction.requiringNew().call(() -> registrarInicio(etapa, contexto));
+    final ResultadoEtapa resultado;
     try {
-      final ResultadoEtapa resultado = etapa.executar(contexto);
-      QuarkusTransaction.requiringNew()
-          .run(
-              () ->
-                  finalizar(
-                      id,
-                      ExecucaoPipeline.Status.SUCESSO,
-                      resultado.registrosProcessados(),
-                      resultado.detalhe()));
-      return true;
-    } catch (RuntimeException e) {
+      resultado = etapa.executar(contexto);
+    } catch (RuntimeException | Error e) {
       Log.errorf(e, "Etapa %s falhou no lote %s", etapa.nome(), contexto.loteId());
       QuarkusTransaction.requiringNew()
           .run(() -> finalizar(id, ExecucaoPipeline.Status.FALHA, 0, descrever(e)));
+      if (e instanceof Error erro) {
+        throw erro;
+      }
       return false;
     }
+    // Fora do try: um erro ao gravar o SUCESSO não pode marcar como FALHA uma etapa que comitou.
+    QuarkusTransaction.requiringNew()
+        .run(
+            () ->
+                finalizar(
+                    id,
+                    ExecucaoPipeline.Status.SUCESSO,
+                    resultado.registrosProcessados(),
+                    resultado.detalhe()));
+    return true;
   }
 
   private long registrarInicio(final EtapaPipeline etapa, final ContextoExecucao contexto) {
@@ -109,7 +124,7 @@ public class PipelineOrquestrador {
     execucao.setDetalhe(limitar(detalhe));
   }
 
-  private static String descrever(final RuntimeException e) {
+  private static String descrever(final Throwable e) {
     return e.getClass().getSimpleName() + ": " + e.getMessage();
   }
 
@@ -118,5 +133,12 @@ public class PipelineOrquestrador {
       return texto;
     }
     return texto.substring(0, TAMANHO_MAXIMO_DETALHE);
+  }
+
+  /** Já existe um lote em andamento nesta instância. */
+  public static final class PipelineEmExecucaoException extends RuntimeException {
+    PipelineEmExecucaoException() {
+      super("Já existe uma execução do pipeline em andamento");
+    }
   }
 }
