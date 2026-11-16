@@ -88,6 +88,23 @@ camadas do DW (15%) e Data Marts (15%)
       rodar as etapas 20 e 30 e conferir dimensões, fatos e marts. Deduplicação e cancelamento
       também precisam de teste.
 
+## Começando com o Claude Code (ECC)
+
+Na branch da sua parte, cole o comando correspondente numa sessão nova do Claude Code. O
+`/ecc:plan` lê o contexto, propõe o plano e **espera sua confirmação** antes de escrever código.
+
+**Felipe** (`git checkout feat/felipe-coleta-raw`):
+
+```text
+/ecc:plan Implementar a parte do Felipe no projeto FarmaRede (PR #1, branch feat/felipe-coleta-raw). Antes de planejar, leia Projeto1.md, docs/divisao-do-trabalho.md (seção "Felipe"), docs/evidencias.md (linhas do Felipe), o PR com `gh pr view 1` e o esqueleto já commitado (SimuladorConfig, SimuladorVendas, IngestaoOltpEtapa, PipelineOrquestrador, PipelineResource). Entregas: (1) simulador agendado no fontes-operacionais gerando vendas PDV/e-commerce, itens, movimentos SAIDA_VENDA e baixa de estoque_atual, com reposição, cancelamento e cliente novo ocasionais; (2) IngestaoOltpEtapa (ordem 10) incremental e idempotente OLTP→raw pelo controle.watermark, com janela de sobreposição e sem duplicar chave_origem+atualizado_na_origem; (3) PipelineOrquestrador com @Scheduled(cron="{pipeline.cron}", SKIP) respeitando pipeline.habilitado, registrando EM_ANDAMENTO→SUCESSO/FALHA em controle.execucao_pipeline em transação própria e parando nas falhas; (4) POST /pipeline/execucoes (202 + loteId) e GET /pipeline/execucoes (DTO record, mais recente primeiro); (5) testes @QuarkusTest em TDD para simulador, ingestão (incl. idempotência) e orquestrador (sucesso e falha); (6) docs/cenario.md, docs/atores.md, seção "Raw" de docs/camadas-dw.md e docs/ciclo-de-vida.md completos e sem TODO; (7) minhas linhas de docs/evidencias.md trocadas de ⬜ para ✅. Restrições: não editar migrations existentes (novas só V100–V199); não mudar o contrato EtapaPipeline nem o formato de raw.* sem combinar com o Romulo; ./mvnw spotless:apply e ./mvnw verify verdes; Conventional Commits pequenos na branch; nada direto na main. Pronto quando: CI do PR #1 verde e `bash scripts/verificar-entrega.sh` sem FALHA nos itens marcados [Felipe] (os [Romulo] podem falhar até o PR #2). Termine marcando o PR #1 como Ready for review.
+```
+
+**Romulo** (`git checkout feat/romulo-dw-marts-consumo`):
+
+```text
+/ecc:plan Implementar a parte do Romulo no projeto FarmaRede (PR #2, branch feat/romulo-dw-marts-consumo). Antes de planejar, leia Projeto1.md, docs/divisao-do-trabalho.md (seção "Romulo"), docs/evidencias.md (linhas do Romulo), o PR com `gh pr view 2` e o esqueleto já commitado (TransformacaoCuradaEtapa, AgregacaoMartsEtapa, MartVendasResource, MartEstoqueResource). Entregas: (1) migration V200 com modelo estrela em curated (dim_tempo, dim_loja, dim_produto, dim_cliente pseudonimizada, fato_venda no grão item, fato_estoque no grão saldo diário) com chaves substitutas; (2) TransformacaoCuradaEtapa (ordem 20) pegando a última versão por chave_origem da raw, limpando, tipando e fazendo upsert idempotente, sem contar venda CANCELADA como receita; (3) migration V250 com marts.vendas_diarias, marts.vendas_top_produtos, marts.estoque_ruptura e marts.estoque_giro, e AgregacaoMartsEtapa (ordem 30) recalculando-os; (4) GET /marts/vendas/diarias, /marts/vendas/top-produtos, /marts/estoque/ruptura e /marts/estoque/giro com filtros, paginação e DTOs record; (5) testes @QuarkusTest em TDD com fixtures inseridas direto em raw.* (não depende do PR #1); (6) Metabase com 1 dashboard por mart e prints em docs/img/; (7) docs/arquitetura.md com diagrama completo e legenda + docs/img/arquitetura.png, docs/data-marts.md e as seções Curada, Agregada e "Por que um DW" de docs/camadas-dw.md, sem TODO; (8) minhas linhas de docs/evidencias.md trocadas de ⬜ para ✅. Restrições: migrations só na faixa V200–V299; não mudar o contrato EtapaPipeline nem o formato de raw.* sem combinar com o Felipe; ./mvnw spotless:apply e ./mvnw verify verdes; Conventional Commits; nada direto na main; antes da revisão, git merge origin/main. Pronto quando: CI do PR #2 verde e `bash scripts/verificar-entrega.sh` sem nenhuma FALHA. Termine marcando o PR #2 como Ready for review.
+```
+
 ## Pontos de contato entre as partes
 
 | De → Para | Contrato |
@@ -119,6 +136,8 @@ git push
 
 ## Pronto quando
 
+- [ ] `bash scripts/verificar-entrega.sh` termina com **0 FALHA**.
+- [ ] Todas as linhas de [docs/evidencias.md](evidencias.md) com ✅.
 - [ ] `./mvnw verify` verde e CI verde.
 - [ ] `docker compose up -d --build --wait` sobe tudo e, depois de alguns ciclos, `GET /marts/...`
       retorna dados gerados pelo simulador.
