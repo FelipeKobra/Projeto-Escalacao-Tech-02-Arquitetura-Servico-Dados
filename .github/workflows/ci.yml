@@ -26,6 +26,10 @@ jobs:
           java-version: "21"
           cache: maven
 
+      # Antes de tudo: os passos de log/limpeza também precisam do .env para o compose.
+      - name: Prepara o .env
+        run: cp .env.example .env
+
       - name: Formatação (Spotless)
         run: ./mvnw -B spotless:check
 
@@ -34,9 +38,7 @@ jobs:
         run: ./mvnw -B verify
 
       - name: Sobe a stack e espera os healthchecks
-        run: |
-          cp .env.example .env
-          docker compose up -d --build --wait --wait-timeout 300
+        run: docker compose up -d --build --wait --wait-timeout 300
 
       - name: Smoke test
         run: |
