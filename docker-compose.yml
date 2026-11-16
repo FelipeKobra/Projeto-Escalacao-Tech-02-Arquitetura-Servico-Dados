@@ -1,0 +1,133 @@
+# =============================================================================
+# FarmaRede - orquestração da plataforma de dados.
+#
+#   cp .env.example .env
+#   docker compose up -d --build --wait      # sobe tudo e espera os healthchecks
+#   docker compose --profile bi up -d         # + Metabase (http://localhost:3000)
+#   docker compose down                       # para (dados ficam nos volumes)
+#   docker compose down -v                    # para e APAGA os dados
+#
+# Ordem de subida garantida por healthchecks:
+#   oltp-db -> fontes-operacionais (migra o OLTP) -> plataforma-dados <- dw-db
+# =============================================================================
+name: farmarede
+
+x-healthcheck-app: &healthcheck-app
+  interval: 10s
+  timeout: 5s
+  retries: 12
+  start_period: 20s
+
+services:
+  # ---------------- Armazenamento operacional (fonte) ----------------
+  oltp-db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: oltp
+      POSTGRES_USER: ${OLTP_DB_USER:?defina no .env}
+      POSTGRES_PASSWORD: ${OLTP_DB_PASSWORD:?defina no .env}
+    ports:
+      - "127.0.0.1:${OLTP_DB_PORTA:-5433}:5432"
+    volumes:
+      - oltp-dados:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks: [farmarede]
+
+  # ---------------- Data Warehouse ----------------
+  dw-db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: dw
+      POSTGRES_USER: ${DW_DB_USER:?defina no .env}
+      POSTGRES_PASSWORD: ${DW_DB_PASSWORD:?defina no .env}
+    ports:
+      - "127.0.0.1:${DW_DB_PORTA:-5434}:5432"
+    volumes:
+      - dw-dados:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks: [farmarede]
+
+  # ---------------- Produtores: PDV, e-commerce e estoque (simulados) ----------------
+  fontes-operacionais:
+    build:
+      context: .
+      args:
+        MODULO: fontes-operacionais
+    image: farmarede/fontes-operacionais:local
+    environment:
+      OLTP_DB_URL: jdbc:postgresql://oltp-db:5432/oltp
+      OLTP_DB_USER: ${OLTP_DB_USER}
+      OLTP_DB_PASSWORD: ${OLTP_DB_PASSWORD}
+      SIMULADOR_HABILITADO: ${SIMULADOR_HABILITADO:-true}
+      SIMULADOR_INTERVALO: ${SIMULADOR_INTERVALO:-10s}
+      SIMULADOR_VENDAS_POR_CICLO: ${SIMULADOR_VENDAS_POR_CICLO:-5}
+    ports:
+      - "${FONTES_PORTA:-8081}:8081"
+    depends_on:
+      oltp-db:
+        condition: service_healthy
+    healthcheck:
+      <<: *healthcheck-app
+      test: ["CMD", "curl", "-fsS", "http://localhost:8081/q/health/ready"]
+    restart: unless-stopped
+    networks: [farmarede]
+
+  # ---------------- Coleta + processamento (DW) + API de consumo ----------------
+  plataforma-dados:
+    build:
+      context: .
+      args:
+        MODULO: plataforma-dados
+    image: farmarede/plataforma-dados:local
+    environment:
+      DW_DB_URL: jdbc:postgresql://dw-db:5432/dw
+      DW_DB_USER: ${DW_DB_USER}
+      DW_DB_PASSWORD: ${DW_DB_PASSWORD}
+      OLTP_DB_URL: jdbc:postgresql://oltp-db:5432/oltp
+      OLTP_DB_USER: ${OLTP_DB_USER}
+      OLTP_DB_PASSWORD: ${OLTP_DB_PASSWORD}
+      PIPELINE_HABILITADO: ${PIPELINE_HABILITADO:-true}
+      PIPELINE_CRON: ${PIPELINE_CRON:-0 */2 * * * ?}
+    ports:
+      - "${PLATAFORMA_PORTA:-8080}:8080"
+    depends_on:
+      dw-db:
+        condition: service_healthy
+      fontes-operacionais:
+        condition: service_healthy
+    healthcheck:
+      <<: *healthcheck-app
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/q/health/ready"]
+    restart: unless-stopped
+    networks: [farmarede]
+
+  # ---------------- Consumo: BI (opcional, profile "bi") ----------------
+  metabase:
+    image: metabase/metabase:v0.65.4
+    profiles: [bi]
+    environment:
+      MB_DB_FILE: /metabase-data/metabase.db
+    ports:
+      - "127.0.0.1:${METABASE_PORTA:-3000}:3000"
+    volumes:
+      - metabase-dados:/metabase-data
+    depends_on:
+      dw-db:
+        condition: service_healthy
+    networks: [farmarede]
+
+volumes:
+  oltp-dados:
+  dw-dados:
+  metabase-dados:
+
+networks:
+  farmarede:

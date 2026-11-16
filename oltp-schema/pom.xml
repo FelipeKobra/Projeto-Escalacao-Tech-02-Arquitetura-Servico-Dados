@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>br.com.equipe.farmarede</groupId>
+        <artifactId>farmarede-dados</artifactId>
+        <version>1.0.0-SNAPSHOT</version>
+    </parent>
+    <artifactId>oltp-schema</artifactId>
+    <packaging>jar</packaging>
+    <name>FarmaRede - Schema OLTP</name>
+    <description>
+        Migrations Flyway do banco operacional (classpath:db/oltp). Aplicadas pelo
+        fontes-operacionais e reutilizadas nos testes da plataforma-dados.
+    </description>
+</project>
