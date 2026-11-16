@@ -8,6 +8,27 @@ consumidores (API REST e Metabase). Tudo roda em containers orquestrados com **D
 
 O enunciado está em [`Projeto1.md`](Projeto1.md) e fica no repositório até a entrega final.
 
+## Início rápido (3 passos)
+
+Precisa só de **Docker** (Docker Desktop no Windows/macOS).
+
+```bash
+# 1. Configuração (uma vez)
+cp .env.example .env                      # PowerShell: Copy-Item .env.example .env
+
+# 2. Sobe tudo e espera ficar saudável (o primeiro build leva alguns minutos)
+docker compose up -d --build --wait
+
+# 3. Confere cada item do Projeto1.md automaticamente
+bash scripts/verificar-entrega.sh         # Windows: Git Bash ou WSL
+```
+
+O passo 3 mostra `[OK]`/`[FALHA]` para cada ponto pedido no enunciado, com o responsável.
+A prova de cada item, com links e comandos para conferir manualmente, está em
+**[docs/evidencias.md](docs/evidencias.md)**.
+
+Para parar: `docker compose down`. Para parar e apagar os dados: `docker compose down -v`.
+
 ## Equipe
 
 | Integrante | Parte |
@@ -18,6 +39,8 @@ O enunciado está em [`Projeto1.md`](Projeto1.md) e fica no repositório até a 
 Tarefas, contratos e ordem de merge: [docs/divisao-do-trabalho.md](docs/divisao-do-trabalho.md).
 
 ## Entregáveis
+
+Status e evidência de cada item: [docs/evidencias.md](docs/evidencias.md).
 
 | Item obrigatório | Documento |
 |------------------|-----------|
