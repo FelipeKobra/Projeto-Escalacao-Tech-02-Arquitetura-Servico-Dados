@@ -1,5 +1,6 @@
 package br.com.equipe.farmarede.dados.pipeline;
 
+import io.quarkus.panache.common.Sort;
 import jakarta.ws.rs.GET;
 import jakarta.ws.rs.POST;
 import jakarta.ws.rs.Path;
@@ -7,11 +8,14 @@ import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 import java.util.List;
+import java.util.UUID;
 
 /** Operação manual do pipeline e consulta do histórico. */
 @Path("/pipeline/execucoes")
 @Produces(MediaType.APPLICATION_JSON)
 public class PipelineResource {
+
+  static final int LIMITE_HISTORICO = 50;
 
   private final PipelineOrquestrador orquestrador;
   private final ExecucaoPipelineRepository execucoes;
@@ -22,17 +26,24 @@ public class PipelineResource {
     this.execucoes = execucoes;
   }
 
-  /** Dispara o pipeline agora. Resposta 202 com {@code {"loteId": "..."}}. */
+  /** Resposta do disparo manual. */
+  public record LoteDisparado(UUID loteId) {}
+
+  /**
+   * Dispara o pipeline agora. Resposta 202 com {@code {"loteId": "..."}}; o resultado de cada etapa
+   * (inclusive falha) fica no histórico.
+   */
   @POST
   public Response disparar() {
-    // TODO (Felipe): orquestrador.executar() e responder 202 com o loteId.
-    throw new UnsupportedOperationException("TODO (Felipe): PipelineResource.disparar");
+    final UUID lote = orquestrador.executar();
+    return Response.accepted(new LoteDisparado(lote)).build();
   }
 
-  /** Histórico de execuções, mais recente primeiro (limite 50). Devolva um record DTO. */
+  /** Histórico de execuções, mais recente primeiro (limite 50). */
   @GET
-  public List<?> listar() {
-    // TODO (Felipe): execucoes.findAll(Sort.descending("id")).page(0, 50) mapeado para DTO.
-    throw new UnsupportedOperationException("TODO (Felipe): PipelineResource.listar");
+  public List<ExecucaoPipelineDto> listar() {
+    return execucoes.findAll(Sort.descending("id")).page(0, LIMITE_HISTORICO).stream()
+        .map(ExecucaoPipelineDto::de)
+        .toList();
   }
 }
