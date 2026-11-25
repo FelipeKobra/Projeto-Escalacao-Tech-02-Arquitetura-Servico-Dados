@@ -13,7 +13,7 @@ O enunciado está em [`Projeto1.md`](Projeto1.md) e fica no repositório até a 
 Precisa só de **Docker** (Docker Desktop no Windows/macOS).
 
 ```bash
-# 1. Configuração (uma vez)
+# 1. Configuração (uma vez) — se for usar o perfil bi (Metabase), defina METABASE_ADMIN_PASSWORD no .env
 cp .env.example .env                      # PowerShell: Copy-Item .env.example .env
 
 # 2. Sobe tudo e espera ficar saudável (o primeiro build leva alguns minutos)
@@ -84,6 +84,7 @@ Pré-requisitos: **Docker** (com Compose v2) e, para desenvolver, **JDK 21**.
 
 ```bash
 cp .env.example .env                     # PowerShell: Copy-Item .env.example .env
+# Se for usar o Metabase (--profile bi), preencha METABASE_ADMIN_PASSWORD no .env
 docker compose up -d --build --wait      # sobe tudo e espera os healthchecks
 docker compose --profile bi up -d        # opcional: Metabase em http://localhost:3000
 docker compose ps                        # todos devem estar "healthy"
@@ -94,15 +95,21 @@ docker compose down -v                   # para e apaga os dados
 
 ### Conectando o Metabase ao `dw-db`
 
-1. Suba a stack com o perfil `bi`: `docker compose --profile bi up -d --wait`.
-2. Acesse `http://localhost:3000` e conclua o assistente inicial (ou faça login).
-3. Em **Admin → Databases → Add database**, escolha **PostgreSQL** e preencha:
-   - **Host:** `dw-db` (nome do serviço na rede interna do Compose)
-   - **Port:** `5432`
-   - **Database name:** `dw`
-   - **Username / Password:** os valores de `DW_DB_USER` e `DW_DB_PASSWORD` do `.env` (padrão `farmarede` / `troque-me-dw`)
-   - **Schemas (opcional):** filtre por `marts,curated` para não expor `raw` aos consumidores.
-4. Após sincronizar, consulte as tabelas `marts.vendas_diarias`, `marts.vendas_top_produtos`, `marts.estoque_ruptura` e `marts.estoque_giro` (exemplos e prints em [docs/data-marts.md](docs/data-marts.md)).
+Antes de subir o perfil `bi`, abra o `.env` (copiado de `.env.example`) e preencha `METABASE_ADMIN_PASSWORD` (o `.env.example` vem com esse campo vazio de propósito).
+
+Ao subir com `docker compose --profile bi up -d --wait`, o serviço `metabase-init` ([scripts/configurar-metabase.py](scripts/configurar-metabase.py)) configura automaticamente na primeira execução:
+
+- **URL:** `http://localhost:3000`
+- **Conexão:** `FarmaRede DW` (`dw-db:5432/dw`, schemas `marts,curated`)
+- **Dashboards prontos (fixados na tela inicial e nos Favoritos):** **Mart de Vendas — FarmaRede** e **Mart de Estoque — FarmaRede**
+
+Caso queira conectar outro banco ou recriar a conexão manualmente em **Admin → Databases → Add database**, escolha **PostgreSQL** e use:
+
+- **Host:** `dw-db` (nome do serviço na rede interna do Compose)
+- **Port:** `5432`
+- **Database name:** `dw`
+- **Username / Password:** os valores de `DW_DB_USER` e `DW_DB_PASSWORD` do `.env` (padrão `farmarede` / `troque-me-dw`)
+- **Schemas (opcional):** filtre por `marts,curated` para não expor `raw` aos consumidores.
 
 Se alguma porta já estiver em uso na sua máquina, troque `FONTES_PORTA`, `PLATAFORMA_PORTA`,
 `METABASE_PORTA`, `OLTP_DB_PORTA` ou `DW_DB_PORTA` no `.env`.
@@ -141,6 +148,7 @@ Todas as chaves aceitam variável de ambiente (o compose lê do `.env`):
 | `DW_DB_USER` / `DW_DB_PASSWORD` | Credenciais do DW | `farmarede` / `troque-me-dw` |
 | `SIMULADOR_HABILITADO`, `SIMULADOR_INTERVALO`, `SIMULADOR_VENDAS_POR_CICLO` | Simulador de vendas | `true`, `10s`, `5` |
 | `PIPELINE_HABILITADO`, `PIPELINE_CRON` | Agenda do pipeline ingestão → curada → marts | `true`, `0 */2 * * * ?` |
+| `METABASE_ADMIN_EMAIL`, `METABASE_ADMIN_PASSWORD` | Credenciais do admin do Metabase (perfil `bi`) | `admin@farmarede.local` / *(definir no `.env`)* |
 
 O `.env` não vai para o git. Sem as senhas definidas, o compose e as apps em `prod` se recusam
 a subir.

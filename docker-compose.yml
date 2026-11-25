@@ -124,6 +124,29 @@ services:
         condition: service_healthy
     networks: [farmarede]
 
+  metabase-init:
+    image: python:3.12-alpine
+    profiles: [bi]
+    command: ["python3", "/scripts/configurar-metabase.py"]
+    environment:
+      METABASE_URL: http://metabase:3000
+      DW_DB_HOST: dw-db
+      DW_DB_PORT: 5432
+      DW_DB_NAME: dw
+      DW_DB_USER: ${DW_DB_USER}
+      DW_DB_PASSWORD: ${DW_DB_PASSWORD}
+      METABASE_ADMIN_EMAIL: ${METABASE_ADMIN_EMAIL:-}
+      METABASE_ADMIN_PASSWORD: ${METABASE_ADMIN_PASSWORD:-}
+    volumes:
+      - ./scripts/configurar-metabase.py:/scripts/configurar-metabase.py:ro
+    depends_on:
+      metabase:
+        condition: service_started
+      dw-db:
+        condition: service_healthy
+    restart: "no"
+    networks: [farmarede]
+
 volumes:
   oltp-dados:
   dw-dados:
