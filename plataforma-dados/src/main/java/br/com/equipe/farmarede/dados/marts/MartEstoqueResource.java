@@ -7,29 +7,39 @@ import jakarta.ws.rs.QueryParam;
 import jakarta.ws.rs.core.MediaType;
 import java.util.List;
 
-/**
- * CONSUMO: Data Mart de Estoque (compras/abastecimento, gerente de loja).
- *
- * <p>Ver checklist em docs/divisao-do-trabalho.md (parte do Romulo).
- */
+/** CONSUMO: Data Mart de Estoque (compras/abastecimento, gerente de loja). */
 @Path("/marts/estoque")
 @Produces(MediaType.APPLICATION_JSON)
 public class MartEstoqueResource {
 
+  private final ConsultarEstoqueRupturaUseCase consultarEstoqueRuptura;
+  private final ConsultarEstoqueGiroUseCase consultarEstoqueGiro;
+
+  public MartEstoqueResource(
+      final ConsultarEstoqueRupturaUseCase consultarEstoqueRuptura,
+      final ConsultarEstoqueGiroUseCase consultarEstoqueGiro) {
+    this.consultarEstoqueRuptura = consultarEstoqueRuptura;
+    this.consultarEstoqueGiro = consultarEstoqueGiro;
+  }
+
   /** Produtos abaixo do estoque mínimo, por loja. */
   @GET
   @Path("/ruptura")
-  public List<?> ruptura(@QueryParam("loja") final String loja) {
-    // TODO (Romulo): ler marts.estoque_ruptura.
-    throw new UnsupportedOperationException("TODO (Romulo): MartEstoqueResource.ruptura");
+  public List<EstoqueRupturaDto> ruptura(
+      @QueryParam("loja") final String loja,
+      @QueryParam("pagina") final Integer pagina,
+      @QueryParam("tamanho") final Integer tamanho) {
+    return consultarEstoqueRuptura.executar(loja, pagina, tamanho);
   }
 
   /** Giro e dias de cobertura por produto/loja. */
   @GET
   @Path("/giro")
-  public List<?> giro(
-      @QueryParam("loja") final String loja, @QueryParam("categoria") final String categoria) {
-    // TODO (Romulo): ler marts.estoque_giro.
-    throw new UnsupportedOperationException("TODO (Romulo): MartEstoqueResource.giro");
+  public List<EstoqueGiroDto> giro(
+      @QueryParam("loja") final String loja,
+      @QueryParam("categoria") final String categoria,
+      @QueryParam("pagina") final Integer pagina,
+      @QueryParam("tamanho") final Integer tamanho) {
+    return consultarEstoqueGiro.executar(loja, categoria, pagina, tamanho);
   }
 }

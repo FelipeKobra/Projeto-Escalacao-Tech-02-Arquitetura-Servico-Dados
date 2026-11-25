@@ -301,46 +301,4 @@ public class AgregacaoMartsEtapa implements EtapaPipeline {
       super(mensagem + ": " + causa.getMessage(), causa);
     }
   }
-
-  private ResultadoEtapa agregar(final ContextoExecucao contexto) {
-    try (Connection con = dw.getConnection();
-        PreparedStatement trava = con.prepareStatement(SQL_TRAVA);
-        Statement st = con.createStatement()) {
-      trava.execute();
-      st.execute(SQL_LIMPAR_MARTS);
-
-      final int vendasDiarias = executarInsert(con, SQL_VENDAS_DIARIAS);
-      final int topProdutos = executarInsert(con, SQL_VENDAS_TOP_PRODUTOS);
-      final int estoqueRuptura = executarInsert(con, SQL_ESTOQUE_RUPTURA);
-      final int estoqueGiro = executarInsert(con, SQL_ESTOQUE_GIRO);
-
-      final long total =
-          (long) vendasDiarias + topProdutos + estoqueRuptura + estoqueGiro;
-      final String detalhe =
-          new StringJoiner(", ")
-              .add("vendas_diarias=" + vendasDiarias)
-              .add("vendas_top_produtos=" + topProdutos)
-              .add("estoque_ruptura=" + estoqueRuptura)
-              .add("estoque_giro=" + estoqueGiro)
-              .toString();
-
-      Log.infof("Agregação marts lote %s: %d registros (%s)", contexto.loteId(), total, detalhe);
-      return new ResultadoEtapa(total, detalhe);
-    } catch (SQLException e) {
-      throw new AgregacaoException("Falha ao agregar curated -> marts", e);
-    }
-  }
-
-  private static int executarInsert(final Connection con, final String sql) throws SQLException {
-    try (PreparedStatement st = con.prepareStatement(sql)) {
-      return st.executeUpdate();
-    }
-  }
-
-  /** Erro de agregação na camada marts; o orquestrador registra como FALHA da etapa. */
-  static final class AgregacaoException extends RuntimeException {
-    AgregacaoException(final String mensagem, final Throwable causa) {
-      super(mensagem + ": " + causa.getMessage(), causa);
-    }
-  }
 }
