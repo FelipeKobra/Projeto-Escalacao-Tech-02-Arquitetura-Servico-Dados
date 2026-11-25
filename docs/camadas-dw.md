@@ -68,16 +68,84 @@ exposta a consumidores. Quem a lê é a etapa 20, que pseudonimiza o cliente na 
 
 ## Curada
 
-<!-- TODO (Romulo): regras de limpeza/tipagem, deduplicação (última versão por chave), modelo
-     estrela (fatos e dimensões, grão de cada fato), chaves substitutas e pseudonimização LGPD. -->
+**O que é:** a camada analítica padronizada em **modelo estrela** (`curated.*`), criada pela
+migration [`V200__curated_modelo_estrela.sql`](../plataforma-dados/src/main/resources/db/migration/V200__curated_modelo_estrela.sql)
+e populada pela **etapa 20 (`transformacao-curated`)** a partir da camada `raw`.
+
+**Regras de transformação aplicadas:**
+
+- **Deduplicação (última versão):** para cada tabela `raw.*`, a etapa seleciona a versão mais
+  recente de cada `chave_origem` (`DISTINCT ON (chave_origem) ... ORDER BY chave_origem,
+  atualizado_na_origem DESC, id DESC`).
+- **Limpeza e tipagem:** valores em `jsonb` (`payload->>'campo'`) são convertidos para seus tipos
+  analíticos (`BIGINT`, `INT`, `NUMERIC`, `BOOLEAN`, `TIMESTAMPTZ`), espaços excedentes são
+  removidos (`trim`/`regexp_replace`) e códigos (`codigo`, `sku`, `uf`, `canal`, `status`,
+  `forma_pagamento`) são padronizados em maiúsculas.
+- **Chaves substitutas e upsert idempotente:** todas as dimensões e fatos possuem chave primária
+  substituta (`BIGINT GENERATED ALWAYS AS IDENTITY`) desacoplada dos IDs do OLTP. Os registros são
+  atualizados com `INSERT ... ON CONFLICT DO UPDATE`, preservando as chaves substitutas e tornando
+  a reexecução segura.
+- **Tratamento de cancelamentos:** vendas `CANCELADA` permanecem em `curated.fato_venda` para
+  rastreabilidade operacional, porém com `valor_liquido = 0.00` e o montante estornado isolado em
+  `valor_cancelado`.
+- **LGPD (pseudonimização):** `curated.dim_cliente` **não armazena** `nome`, `email` nem
+  `data_nascimento` em claro. O identificador analítico é `chave_pseudonimo` (`SHA-256` em
+  hexadecimal de 64 caracteres) acompanhado apenas de `cidade`, `uf` e `faixa_etaria` (`MENOR_18`,
+  `18-29`, `30-44`, `45-59`, `60+` ou `NAO_INFORMADA`).
+
+**Modelo estrela (`curated`):**
+
+| Tabela | Papel | Grão / Chave de negócio | Principais atributos |
+|--------|-------|-------------------------|----------------------|
+| `dim_tempo` | Dimensão | 1 dia (`data`, fuso `America/Sao_Paulo`) | `ano`, `mes`, `dia`, `trimestre`, `dia_semana`, `fim_de_semana` |
+| `dim_loja` | Dimensão | 1 loja (`id_origem`) | `codigo`, `nome`, `cidade`, `uf`, `tipo` (`FISICA`/`ONLINE`) |
+| `dim_produto` | Dimensão | 1 produto (`id_origem`) | `sku`, `nome`, `categoria`, `fabricante`, `preco_unitario`, `controlado` |
+| `dim_cliente` | Dimensão | 1 cliente (`id_origem`) | `chave_pseudonimo` (SHA-256), `cidade`, `uf`, `faixa_etaria` |
+| `fato_venda` | Fato | **Item de venda** (`id_item_origem`) | FKs substitutas (`tempo_id`, `loja_id`, `produto_id`, `cliente_id` opcional), `canal`, `status`, `quantidade`, `valor_bruto`, `valor_liquido`, `valor_cancelado` |
+| `fato_estoque` | Fato | **Saldo diário por loja/produto** (`tempo_id`, `loja_id`, `produto_id`) | `quantidade_saldo`, `estoque_minimo`, `em_ruptura`, `qtd_entradas`, `qtd_saidas_venda`, `qtd_ajustes`, `qtd_perdas` |
 
 ## Agregada
 
-<!-- TODO (Romulo): por que pré-agregar (consulta rápida para BI), o que é recalculado a cada
-     execução e como os marts se ligam às perguntas do cenário. -->
+**O que é:** a camada de consumo direto (`marts.*`), criada pela migration
+[`V250__marts.sql`](../plataforma-dados/src/main/resources/db/migration/V250__marts.sql) e
+recalculada pela **etapa 30 (`agregacao-marts`)**.
+
+**Por que pré-agregar?** Consultas de dashboards no Metabase e endpoints REST da loja (`GET
+/marts/...`) precisam responder em milissegundos, sem repetir agregações e *window functions* sobre
+milhares de itens de `fato_venda` a cada clique do usuário. A pré-agregação também garante que API e
+BI exibam exatamente os mesmos números oficiais.
+
+**O que é recalculado e como responde às perguntas do cenário:** a cada execução bem-sucedida da
+etapa 20, a etapa 30 executa em transação única (`TRUNCATE` + `INSERT ... SELECT` com lock
+advisory) os quatro Data Marts:
+
+- `marts.vendas_diarias`: responde receita líquida, nº de vendas, cancelamentos e ticket médio por
+  dia, loja e canal (`PDV` × `ECOMMERCE`).
+- `marts.vendas_top_produtos`: responde quais produtos e categorias mais faturam e vendem por mês.
+- `marts.estoque_ruptura`: lista somente itens com `quantidade_saldo < estoque_minimo` no último
+  saldo conhecido e calcula o `deficit` para reposição imediata.
+- `marts.estoque_giro`: calcula vendas dos últimos 30 dias, média diária, giro e dias de cobertura
+  por loja e SKU para orientar compras.
 
 ## Por que um DW e não só o banco relacional?
 
-<!-- TODO (Romulo): OLTP otimizado para escrita/transação × DW para leitura analítica; consultas
-     pesadas não podem travar o caixa; histórico; integração de várias fontes; modelo
-     dimensional; dados limpos e consistentes para todos os consumidores. Use exemplos da FarmaRede. -->
+Usar o `oltp-db` para tudo causaria conflitos operacionais e limitações analíticas graves na
+FarmaRede:
+
+1. **Cargas opostas (OLTP × OLAP):** o `oltp-db` é otimizado para transações curtas de escrita e
+   leitura pontual (finalizar uma venda no caixa PDV `SP01` e baixar `estoque_atual` com lock de
+   linha). Consultas analíticas longas varrendo meses de `item_venda` competem por CPU, I/O e
+   buffers, degradando o tempo de resposta do caixa no horário de pico.
+2. **Preservação de histórico:** o banco relacional operacional guarda apenas o estado atual — se a
+   venda `1042` muda de `CONCLUIDA` para `CANCELADA` ou um produto sofre reajuste de preço, a versão
+   anterior é sobrescrita. A camada `raw` append-only preserva todas as versões para auditoria e
+   reprocessamento.
+3. **Integração e padronização semântica:** PDV, e-commerce (`WEB`) e controle de estoque gravam
+   regras próprias (ex.: `cliente_id` nulo no balcão, sinais negativos em `movimento_estoque`). Na
+   camada `curated`, tudo é limpo, tipado e consolidado num modelo dimensional único.
+4. **Modelo dimensional para BI:** o esquema estrela (`fato_venda`, `fato_estoque` + `dim_*`) e os
+   `marts` pré-agregados simplificam consultas no Metabase e na API REST, evitando junções complexas
+   e divergência de fórmulas entre áreas.
+5. **Governança e LGPD:** separar o DW permite restringir `oltp-db` e `raw` apenas à operação e ao
+   pipeline técnico, expondo para consumo somente clientes pseudonimizados (`curated.dim_cliente`) e
+   indicadores agregados (`marts.*`).

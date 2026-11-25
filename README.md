@@ -92,6 +92,18 @@ docker compose down                      # para (dados preservados nos volumes)
 docker compose down -v                   # para e apaga os dados
 ```
 
+### Conectando o Metabase ao `dw-db`
+
+1. Suba a stack com o perfil `bi`: `docker compose --profile bi up -d --wait`.
+2. Acesse `http://localhost:3000` e conclua o assistente inicial (ou faça login).
+3. Em **Admin → Databases → Add database**, escolha **PostgreSQL** e preencha:
+   - **Host:** `dw-db` (nome do serviço na rede interna do Compose)
+   - **Port:** `5432`
+   - **Database name:** `dw`
+   - **Username / Password:** os valores de `DW_DB_USER` e `DW_DB_PASSWORD` do `.env` (padrão `farmarede` / `troque-me-dw`)
+   - **Schemas (opcional):** filtre por `marts,curated` para não expor `raw` aos consumidores.
+4. Após sincronizar, consulte as tabelas `marts.vendas_diarias`, `marts.vendas_top_produtos`, `marts.estoque_ruptura` e `marts.estoque_giro` (exemplos e prints em [docs/data-marts.md](docs/data-marts.md)).
+
 Se alguma porta já estiver em uso na sua máquina, troque `FONTES_PORTA`, `PLATAFORMA_PORTA`,
 `METABASE_PORTA`, `OLTP_DB_PORTA` ou `DW_DB_PORTA` no `.env`.
 

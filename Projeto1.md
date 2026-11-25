@@ -23,12 +23,12 @@ Os alunos devem simular a arquitetura de dados de uma empresa real ou fictícia 
 
 | Item                            | Descrição                                               | Entregue? |
 |---------------------------------|----------------------------------------------------------|-----------|
-| Definição do negócio escolhido  | Ex: escola, mercado, loja                                |           |
-| Atores identificados            | Produtores e consumidores                                |           |
-| Diagrama da arquitetura de dados| Representa coleta → armazenamento → consumo              |           |
-| Camadas do DW                   | Raw, Curada, Agregada identificadas e justificadas       |           |
-| Data Marts definidos            | Pelo menos 2, com foco específico                        |           |
-| Texto explicativo do ciclo do dado | Como os dados circulam e são usados                  |           |
+| Definição do negócio escolhido  | Ex: escola, mercado, loja                                | ✅ [`docs/cenario.md`](docs/cenario.md) |
+| Atores identificados            | Produtores e consumidores                                | ✅ [`docs/atores.md`](docs/atores.md) |
+| Diagrama da arquitetura de dados| Representa coleta → armazenamento → consumo              | ✅ [`docs/arquitetura.md`](docs/arquitetura.md) |
+| Camadas do DW                   | Raw, Curada, Agregada identificadas e justificadas       | ✅ [`docs/camadas-dw.md`](docs/camadas-dw.md) |
+| Data Marts definidos            | Pelo menos 2, com foco específico                        | ✅ [`docs/data-marts.md`](docs/data-marts.md) |
+| Texto explicativo do ciclo do dado | Como os dados circulam e são usados                  | ✅ [`docs/ciclo-de-vida.md`](docs/ciclo-de-vida.md) |
 
 ## Critérios de Avaliação
 
